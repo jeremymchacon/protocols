@@ -1,0 +1,291 @@
+2D monod model with deSolve
+================
+Chacon
+2022-11-03
+
+## two-dimensional simulation of a monod model
+
+This markdown shows how to simulate a simple Monod model in 2D, using
+deSolve in R.
+
+If you haven’t learned how to do a well-mixed simulation in deSolve, I
+recommend first looking at the “numerical_ODE_simulation_with_deSolve”
+protocol.
+
+Generally, the model below can be used as a framework to build
+reaction-diffusion models (which are partial differential equations
+models) of any sort.
+
+The “reaction” part is the growth/uptake part of the simulation, and the
+diffusion is the movement between adjacent boxes.
+
+Here is what the “reaction” part would look like on its own:
+
+``` r
+# this "inner" model would look something like this:
+monod = function(time, state, pars){
+  # this is the other way to get variables (as opposed to using named lists)
+  # i do it this way here because when we move to 2d, thats how we'll get the data
+  ecoli = state[1]
+  glucose = state[2]
+  
+  with(as.list(pars),{ # still want to just use named parameters
+    decoli = ecoli * vmax * glucose / (glucose + km)
+    dglucose = -ecoli * vmax * glucose / (glucose + km)
+    
+    return(list(c(decoli,dglucose)))
+  })
+}
+```
+
+Now we will put that model in 2D space. We’ll simulate a square that is
+5cm X 5cm, divided into 50 boxes on a side.
+
+``` r
+# now we put that into a 2d space. We'll make a square, 5cm x 5cm, with 50 boxes per side
+fullwidth = 5 # cm
+N = 50   # boxes
+dx = fullwidth/N# boxwidth (cm)
+NN = N * N # total # of boxes
+```
+
+We will also define the diffusion rates of glucose and ecoli, as this is
+how these “state variables” will spread between boxes.
+
+``` r
+# we'll make the resource diffuse at 0.018 cm2/h (=5e-6cm2/s), and the bacteria
+# at 1/50th of that
+D_glucose = 0.018   # cm2/h, disffusion const (=5e-6 cm2/s)
+D_ecoli = D_glucose / 50
+```
+
+Now we will make the function which deSolve uses to solve this pde. You
+may notice that the “reaction” part is basically unchanged from the
+version above. What has to happen first, though, is convert vectors of
+ecoli and glucose concentrations to matrices. Then after the reaction
+part is calculated, the diffusion part is calculated using the matrices.
+Finally, the matrices are converted back into vectors; this may seem
+arcane but it is required by deSolve.
+
+Note that in the function definition, in addition to the usual arguments
+(time, state, pars), we are also explicitly supplying the spatial
+parameters (N, D_ecoli, D_glucose, dx).
+
+Note that a diffusion calculation on a lattice subtracts 4\*the
+concentration of the focal box, and adds the concentration of each
+adjacent box, and to make this spatially realistic it does it prortional
+to the diffusion constant, and to 1/(dx^2). Hopefully this helps explain
+the diffusion calculations which occur after the reaction.
+
+``` r
+monod2D <- function (time, state, pars, N, D_ecoli, D_glucose, dx) {
+  # this function needs to return a vector of data, not a matrix. That means,
+  # each time, the data must be put back into matrix form to do reaction (growth)
+  # and diffusion, then put back into vector form. Here we grab the state variables
+  # from "state" and separate them into the two different matrices
+  NN <- N*N
+  ecoli <- matrix(nrow = N, ncol = N,state[1:NN])
+  glucose <- matrix(nrow = N, ncol = N,state[(NN+1):(2*NN)])
+  # a check, in case of numerical issues. this is good practice for anything which can approach zero, but shouldn't go negative
+  # this can happen to the ecoli because of diffusion. it happens to the glucose mostly, because of consumption
+  glucose[glucose < 0] = 0
+  ecoli[ecoli < 0] = 0
+  
+  with (as.list(pars), {
+    ## the "reaction" still happens the same way, since the math is vectorized
+    decoli_dt = ecoli * vmax * glucose / (glucose + km)
+    dglucose_dt = -ecoli * vmax * glucose / (glucose + km)
+    
+    # "zero" is a helper deSolve suggested to make calculating diffusion fluxes easier
+    zero = rep(0, N)
+    
+    # next set of equations does the diffusion calculations
+
+    # if you imagine data like this:   c(1,3,2,4). Focus on the 3. It changes due to 
+    # diffusion in one axis by adding the data on both sides, then subtracting 2x of the focal.
+    # so that "3" changes like:  +1 + 2 -3 -3.  Then, this value is made spatially accurate
+    # by multiplying by D/(dx^2)
+    #
+    # in practice its slightly trickier, because the edges should reflect. We deal
+    # with this by adding a copied row above and below before performing that calculation.
+    ecoli_rows_bigger = rbind(ecoli[1,], ecoli, ecoli[N,])
+    ecoli_rows_diff = ecoli_rows_bigger[1:N,] + ecoli_rows_bigger[3:(N+2),] - 2 * ecoli
+    ecoli_rows_diff = D_ecoli * (1 / dx^2) * ecoli_rows_diff
+
+    glucose_rows_bigger = rbind(glucose[1,], glucose, glucose[N,])
+    glucose_rows_diff = glucose_rows_bigger[1:N,] + glucose_rows_bigger[3:(N+2),] - 2 * glucose
+    glucose_rows_diff = D_glucose * (1 / dx^2) * glucose_rows_diff
+    
+    ## Add flux gradient across rows to rate of change, aka add the diffusion to the reaction
+    decoli_dt    = decoli_dt + ecoli_rows_diff
+    dglucose_dt  = dglucose_dt + glucose_rows_diff
+    
+    ## 2. Now repeat, but across columns
+    ecoli_cols_bigger = cbind(ecoli[,1], ecoli, ecoli[,N])
+    ecoli_cols_diff = ecoli_cols_bigger[,1:N] + ecoli_cols_bigger[,3:(N+2)] - 2 * ecoli
+    ecoli_cols_diff = D_ecoli * (1 / dx^2) * ecoli_cols_diff
+    
+    glucose_cols_bigger = cbind(glucose[,1], glucose, glucose[,N])
+    glucose_cols_diff = glucose_cols_bigger[,1:N] + glucose_cols_bigger[,3:(N+2)] - 2 * glucose
+    glucose_cols_diff = D_glucose * (1 / dx^2) * glucose_cols_diff
+    ## Add flux gradient across columns to rate of change
+    decoli_dt   = decoli_dt + ecoli_cols_diff
+    dglucose_dt = dglucose_dt + glucose_cols_diff
+    
+    # reconvert the state variables back into vectors, bind them together, and return as list
+    return(list(c(as.vector(decoli_dt), as.vector(dglucose_dt))))
+  })
+}
+```
+
+We still set parameters in a named vector.
+
+``` r
+pars = c(vmax   = 1,    # /hr
+             km = 0.01)     # half-saturation constant, [resource]
+```
+
+We set the initial conditions SIMILAR to what we do for a well-mixed
+simulation, but we need NxN initial values for each “layer” (two layers-
+ecoli and glucose).
+
+We also set the times.
+
+In this example, the glucose will start off uniformly distributed, and
+ecoli will be rare.
+
+``` r
+## initial conditions--need NxN for ecoli AND glucose
+# get random locs for ecoli, mostly zeros
+ecoli_ini = sample(c(rep(0, 125), 1), size = N*N, replace = TRUE)
+# uniform resource concentration
+glucose_ini = rep(10, N*N)
+# all data
+yini = c(ecoli_ini, glucose_ini)
+
+# 24 hours
+times = seq(0, 24, length.out = 50)
+```
+
+Now we solve the model. Note that this uses ode.2D instead of ode.
+
+In this example we’re following deSolve’s suggestion and using a
+Runge-Kutta based solver. We could swap this out for lsoda, but it may
+be slower.
+
+NOTE: THIS TAKES ABOUT A MINUTE ON A MODERN (2022) DESKTOP
+
+In the call, notice that we supply “dimens” and “nspec”. The dimens are
+the spatial dimensions, nspec is how many “layers” (here, 2, one for
+ecoli, one for glucose). It’s good to tell these to ode2D so it can
+check you supplied the right number of variables.
+
+Finally, note how we just supply the named spatial parameters. deSolve
+knows to pass these to the function we supplied (monod2D in this case).
+
+``` r
+## solve model
+# note how we can just supply the named spatial parms
+# we also use Cash-Karp Runge-Kutta method for integration cuz its faster than lsoda
+# 
+# this takes about a minute on a 2022 mid-range desktop
+out = ode.2D(y = yini, times = times, func = monod2D, parms = pars,
+              dimens = c(N, N), nspec = 2, names = c("ecoli", "glucose"),
+              N = N, D_ecoli = D_ecoli, D_glucose = D_glucose, dx = dx, 
+              method = rkMethod("rk45ck"))
+```
+
+Good to check some diagnostics:
+
+Note how we did get some data less than zero, hence the importance of
+the check in the model function.
+
+``` r
+diagnostics(out)
+```
+
+    ## 
+    ## --------------------
+    ## rk return code
+    ## --------------------
+    ## 
+    ##   return code (idid) =  0 
+    ##   Integration was successful.
+    ## 
+    ## --------------------
+    ## INTEGER values
+    ## --------------------
+    ## 
+    ##   1 The return code : 0 
+    ##   2 The number of steps taken for the problem so far: 10763 
+    ##   3 The number of function evaluations for the problem so far: 64580 
+    ##  13 The number of error test failures of the integrator so far: 225 
+    ##  18 The order (or maximum order) of the method: 4 
+    ## 
+
+``` r
+summary(out)
+```
+
+    ##                 ecoli       glucose
+    ## Min.    -1.236281e-41 -2.656639e-05
+    ## 1st Qu.  2.493342e-06  8.337562e-14
+    ## Median   2.384087e-01  3.589622e+00
+    ## Mean     5.513293e+00  4.493107e+00
+    ## 3rd Qu.  8.645129e+00  9.670686e+00
+    ## Max.     6.442382e+01  1.000000e+01
+    ## N        1.250000e+05  1.250000e+05
+    ## sd       8.740925e+00  4.396914e+00
+
+Then deSolve has a helper function to grab specific state variables,
+which it returns as a 3d matrix, with the first two dimensions being x
+and y, and the third dimension being time. Specifically, the times in
+“times”.
+
+``` r
+# use "select" to grab specific state variables. this nicely makes arrays for you
+bacteria <- subset(out, select = "ecoli", arr = TRUE)
+resource <- subset(out, select = "glucose", arr = TRUE)
+```
+
+We can do a simple apply function to sum over time and plot:
+
+``` r
+par(mfrow = c(1,2))
+# plot totals through time. margin 3 is time (1 = x, 2 = y)
+total_bacteria = apply(bacteria, MARGIN = 3, FUN = sum)
+total_resource = apply(resource, MARGIN = 3, FUN = sum)
+plot(times, total_bacteria)
+plot(times, total_resource)
+```
+
+![](twod_desolve_files/figure-gfm/sumovertime-1.png)<!-- -->
+
+We can also plot the actual images from select times. Here I do that in
+a loop. The top 6 images are ecoli, the bottom six are glucose.
+
+``` r
+par(mfrow = c(4,3))
+for (i in seq(from = 1, to = 50, length.out = 6)){
+  image(bacteria[,,i])
+}
+# and the resource below
+for (i in seq(from = 1, to = 50, length.out = 6)){
+  image(resource[,,i])
+}
+```
+
+![](twod_desolve_files/figure-gfm/show%20images-1.png)<!-- -->
+
+A final thought:
+
+Back when I did this for the Isme paper, I found that having the
+diffusion calculations inside the solver sometimes resulted in
+out-of-memory issues when I was using (large) worlds of 100x100, with
+three different state variables.
+
+If you run into that, it is pretty straightforward to separate the
+steps. Then, you still use deSolve for the “reaction” (growth), but just
+manually do the diffusion calculations. The only real difference here is
+you multiply by a pre-specified dt, and you run all of this in a loop.
+Hopefully this isn’t necessary anymore, as it requires a very small dt.
