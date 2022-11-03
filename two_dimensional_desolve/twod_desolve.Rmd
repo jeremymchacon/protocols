@@ -2,7 +2,7 @@
 title: "2D monod model with deSolve"
 author: "Chacon"
 date: "2022-11-03"
-output: html_document
+output: rmarkdown::github_document
 ---
 
 ```{r setup, include=FALSE}

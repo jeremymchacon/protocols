@@ -24,7 +24,9 @@ with max rate “v_xe” and half-saturation constant “k_xe”.
 
 $$
 \frac{dE}{dt} = E * v_{xe} * X / (X + k_{xe})
-$$ We can see that the per-capita growth rate (dE/dt)/E increases in a
+$$
+
+We can see that the per-capita growth rate (dE/dt)/E increases in a
 saturating way as X increases. Imaging v_xe = 1.2, and k_xe = 10:
 
 ``` r
