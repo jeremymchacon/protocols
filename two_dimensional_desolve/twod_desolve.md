@@ -73,9 +73,9 @@ parameters (N, D_ecoli, D_glucose, dx).
 
 Note that a diffusion calculation on a lattice subtracts 4\*the
 concentration of the focal box, and adds the concentration of each
-adjacent box, and to make this spatially realistic it does it prortional
-to the diffusion constant, and to 1/(dx^2). Hopefully this helps explain
-the diffusion calculations which occur after the reaction.
+adjacent box, and to make this spatially realistic it does it
+proportional to the diffusion constant, and to 1/(dx^2). Hopefully this
+helps explain the diffusion calculations which occur after the reaction.
 
 ``` r
 monod2D <- function (time, state, pars, N, D_ecoli, D_glucose, dx) {
@@ -95,10 +95,7 @@ monod2D <- function (time, state, pars, N, D_ecoli, D_glucose, dx) {
     ## the "reaction" still happens the same way, since the math is vectorized
     decoli_dt = ecoli * vmax * glucose / (glucose + km)
     dglucose_dt = -ecoli * vmax * glucose / (glucose + km)
-    
-    # "zero" is a helper deSolve suggested to make calculating diffusion fluxes easier
-    zero = rep(0, N)
-    
+
     # next set of equations does the diffusion calculations
 
     # if you imagine data like this:   c(1,3,2,4). Focus on the 3. It changes due to 
@@ -116,10 +113,6 @@ monod2D <- function (time, state, pars, N, D_ecoli, D_glucose, dx) {
     glucose_rows_diff = glucose_rows_bigger[1:N,] + glucose_rows_bigger[3:(N+2),] - 2 * glucose
     glucose_rows_diff = D_glucose * (1 / dx^2) * glucose_rows_diff
     
-    ## Add flux gradient across rows to rate of change, aka add the diffusion to the reaction
-    decoli_dt    = decoli_dt + ecoli_rows_diff
-    dglucose_dt  = dglucose_dt + glucose_rows_diff
-    
     ## 2. Now repeat, but across columns
     ecoli_cols_bigger = cbind(ecoli[,1], ecoli, ecoli[,N])
     ecoli_cols_diff = ecoli_cols_bigger[,1:N] + ecoli_cols_bigger[,3:(N+2)] - 2 * ecoli
@@ -128,9 +121,14 @@ monod2D <- function (time, state, pars, N, D_ecoli, D_glucose, dx) {
     glucose_cols_bigger = cbind(glucose[,1], glucose, glucose[,N])
     glucose_cols_diff = glucose_cols_bigger[,1:N] + glucose_cols_bigger[,3:(N+2)] - 2 * glucose
     glucose_cols_diff = D_glucose * (1 / dx^2) * glucose_cols_diff
-    ## Add flux gradient across columns to rate of change
-    decoli_dt   = decoli_dt + ecoli_cols_diff
-    dglucose_dt = dglucose_dt + glucose_cols_diff
+    
+    # sum the row-wise and column-wise diffusion
+    ecoli_diffusion = ecoli_rows_diff + ecoli_cols_diff
+    glucose_diffusion = glucose_rows_diff + glucose_cols_diff
+    
+    ## Add the diffusion to the reaction
+    decoli_dt   = decoli_dt + ecoli_diffusion
+    dglucose_dt = dglucose_dt + glucose_diffusion
     
     # reconvert the state variables back into vectors, bind them together, and return as list
     return(list(c(as.vector(decoli_dt), as.vector(dglucose_dt))))
@@ -217,9 +215,9 @@ diagnostics(out)
     ## --------------------
     ## 
     ##   1 The return code : 0 
-    ##   2 The number of steps taken for the problem so far: 10763 
-    ##   3 The number of function evaluations for the problem so far: 64580 
-    ##  13 The number of error test failures of the integrator so far: 225 
+    ##   2 The number of steps taken for the problem so far: 11075 
+    ##   3 The number of function evaluations for the problem so far: 66452 
+    ##  13 The number of error test failures of the integrator so far: 212 
     ##  18 The order (or maximum order) of the method: 4 
     ## 
 
@@ -228,14 +226,14 @@ summary(out)
 ```
 
     ##                 ecoli       glucose
-    ## Min.    -1.236281e-41 -2.656639e-05
-    ## 1st Qu.  2.493342e-06  8.337562e-14
-    ## Median   2.384087e-01  3.589622e+00
-    ## Mean     5.513293e+00  4.493107e+00
-    ## 3rd Qu.  8.645129e+00  9.670686e+00
-    ## Max.     6.442382e+01  1.000000e+01
+    ## Min.    -6.970401e-42 -2.788627e-05
+    ## 1st Qu.  1.680570e-06  7.482542e-12
+    ## Median   2.012018e-01  3.738464e+00
+    ## Mean     5.487387e+00  4.521013e+00
+    ## 3rd Qu.  9.136914e+00  9.652942e+00
+    ## Max.     6.430195e+01  1.000000e+01
     ## N        1.250000e+05  1.250000e+05
-    ## sd       8.740925e+00  4.396914e+00
+    ## sd       8.486421e+00  4.380557e+00
 
 Then deSolve has a helper function to grab specific state variables,
 which it returns as a 3d matrix, with the first two dimensions being x
@@ -243,9 +241,10 @@ and y, and the third dimension being time. Specifically, the times in
 “times”.
 
 ``` r
-# use "select" to grab specific state variables. this nicely makes arrays for you
-bacteria <- subset(out, select = "ecoli", arr = TRUE)
-resource <- subset(out, select = "glucose", arr = TRUE)
+# subset is a deSolve function which grabs single layers for you, 
+# and can return them as arrays
+bacteria = subset(out, select = "ecoli", arr = TRUE)
+resource = subset(out, select = "glucose", arr = TRUE)
 ```
 
 We can do a simple apply function to sum over time and plot:
