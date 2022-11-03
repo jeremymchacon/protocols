@@ -1,30 +1,33 @@
----
-title: "bleedthrough correction"
-author: "Chacón"
-date: "2022-11-02"
-output: rmarkdown::github_document
----
-
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
-library(tidyverse)
-```
+bleedthrough correction
+================
+Chacón
+2022-11-02
 
 ## Bleedthrough correction
 
-This document shows how to get species-specific OD values from coculture fluorescence measurements.
+This document shows how to get species-specific OD values from coculture
+fluorescence measurements.
 
-At minimum, in addition to the coculture measurement, one also needs growth curves with OD and fluorescence for each monoculture. Fluorescence must be measured in each channel which is used in the coculture experiment.
+At minimum, in addition to the coculture measurement, one also needs
+growth curves with OD and fluorescence for each monoculture.
+Fluorescence must be measured in each channel which is used in the
+coculture experiment.
 
-For example, if running a coculture with E0 and S0, that means each monoculture should be measured with CFP (E0's fluorescent protein) and YFP (S0's fluorescent protein).
+For example, if running a coculture with E0 and S0, that means each
+monoculture should be measured with CFP (E0’s fluorescent protein) and
+YFP (S0’s fluorescent protein).
 
-As an important note, the relationship between fluorescence and OD is specific to a medium. This can create challenges during mutualistic growth when one doesnt know the actual medium. Please keep that in mind when you do your own analyses.
+As an important note, the relationship between fluorescence and OD is
+specific to a medium. This can create challenges during mutualistic
+growth when one doesnt know the actual medium. Please keep that in mind
+when you do your own analyses.
 
 # Load Data
 
-I am going to enter data from an actual TECAN run of Lisa Fazzino's. It is E, or S, or E and S, in succinate.
+I am going to enter data from an actual TECAN run of Lisa Fazzino’s. It
+is E, or S, or E and S, in succinate.
 
-```{r get_data}
+``` r
 results = structure(list(cycle = c(1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 
 5, 5, 5, 6, 6, 6, 7, 7, 7, 8, 8, 8, 9, 9, 9, 10, 10, 10, 11, 
 11, 11, 12, 12, 12, 13, 13, 13, 14, 14, 14, 15, 15, 15, 16, 16, 
@@ -655,47 +658,65 @@ results = structure(list(cycle = c(1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4,
 results %>%
   ggplot(aes(x = cycle, y= od, color = species))+
   geom_line()
+```
+
+![](bleedthrough_correction_files/figure-gfm/get_data-1.png)<!-- -->
+
+``` r
 results %>%
   ggplot(aes(x = cycle, y= cfp, color = species))+
   geom_line()
+```
+
+![](bleedthrough_correction_files/figure-gfm/get_data-2.png)<!-- -->
+
+``` r
 results %>%
   ggplot(aes(x = cycle, y= yfp, color = species))+
   geom_line()
-
 ```
 
-1. Subtract the minimum measurement from each well.
+![](bleedthrough_correction_files/figure-gfm/get_data-3.png)<!-- -->
 
-```{r minsubtract}
+1.  Subtract the minimum measurement from each well.
 
+``` r
 results = results %>%
   group_by(well, species) %>%
   mutate(od = od - min(od),
          cfp = cfp - min(cfp),
          yfp = yfp - min(yfp))
-
-
 ```
 
+What we need is the amount of OD per unit of fluorescent protein, for
+each species.
 
-What we need is the amount of OD per unit of fluorescent protein, for each species. 
+We get this by fitting regression lines. Note that the relationship
+changes after growth ceases, so we restrict our analysis to this part of
+growth.
 
-We get this by fitting regression lines. Note that the relationship changes after growth ceases, so we restrict our analysis to this part of growth.
-
-```{r scatters}
-
+``` r
 results %>%
   ggplot(aes(x = cfp, y = od, color = species))+
   geom_point()
+```
+
+![](bleedthrough_correction_files/figure-gfm/scatters-1.png)<!-- -->
+
+``` r
 results %>%
   ggplot(aes(x = yfp, y = od, color = species))+
   geom_point()
-
 ```
 
-I wrote code which find the region of growth. It is old code and could easily be improved, but it works for now. The functions are in bleedthrough_funcs.r and can be used within a pipe. This chunk shows it plotted. The next one does the regression of OD vs. FP for these plots. 
+![](bleedthrough_correction_files/figure-gfm/scatters-2.png)<!-- -->
 
-```{r get_growth_chunk}
+I wrote code which find the region of growth. It is old code and could
+easily be improved, but it works for now. The functions are in
+bleedthrough_funcs.r and can be used within a pipe. This chunk shows it
+plotted. The next one does the regression of OD vs. FP for these plots.
+
+``` r
 source("./bleedthrough_funcs.r")
 results %>% 
   filter(species != "ES") %>%
@@ -703,41 +724,61 @@ results %>%
   filter(cycle >= get_start_growth_time(cycle, od) & cycle <= get_max_growth_time(cycle, od)) %>%
   ggplot(aes(x = cycle, y = od, color = species))+
   geom_point()
+```
 
+![](bleedthrough_correction_files/figure-gfm/get_growth_chunk-1.png)<!-- -->
 
+``` r
 results %>% 
   filter(species != "ES") %>%
   group_by(species) %>%
   filter(cycle >= get_start_growth_time(cycle, od) & cycle <= get_max_growth_time(cycle, od)) %>%
   ggplot(aes(x = cfp, y = od, color = species))+
   geom_point()
+```
 
+![](bleedthrough_correction_files/figure-gfm/get_growth_chunk-2.png)<!-- -->
+
+``` r
 results %>% 
   filter(species != "ES") %>%
   group_by(species) %>%
   filter(cycle >= get_start_growth_time(cycle, od) & cycle <= get_max_growth_time(cycle, od)) %>%
   ggplot(aes(x = yfp, y = od, color = species))+
   geom_point()
+```
 
+![](bleedthrough_correction_files/figure-gfm/get_growth_chunk-3.png)<!-- -->
+
+``` r
 results %>% 
   filter(species != "ES") %>%
   group_by(species) %>%
   filter(cycle >= get_start_growth_time(cycle, od) & cycle <= get_max_growth_time(cycle, od)) %>%
   ggplot(aes(x = cfp, y = yfp, color = species))+
   geom_point()
-
-
 ```
 
-Now we get the coefficients and put them into a table. if the regression is not significant, we disclude it. I am doing this "manually" to make it clearer what is happening, though one could put this into a pipe if desired.
+![](bleedthrough_correction_files/figure-gfm/get_growth_chunk-4.png)<!-- -->
 
-```{r get_coefs}
+Now we get the coefficients and put them into a table. if the regression
+is not significant, we disclude it. I am doing this “manually” to make
+it clearer what is happening, though one could put this into a pipe if
+desired.
 
+``` r
 E_od_from_cfp = results %>% 
   filter(species == "E") %>%
   filter(cycle >= get_start_growth_time(cycle, od) & cycle <= get_max_growth_time(cycle, od)) %>%
   summarize(slope = coef(lm(od ~ cfp))[2]) %>% 
   select(slope) %>%  pull %>% unname 
+```
+
+    ## `summarise()` has grouped output by 'well'. You can override using the
+    ## `.groups` argument.
+    ## Adding missing grouping variables: `well`
+
+``` r
 E_yfp_from_cfp = results %>% 
   filter(species == "E") %>%
   filter(cycle >= get_start_growth_time(cycle, od) & cycle <= get_max_growth_time(cycle, od)) %>%
@@ -745,11 +786,25 @@ E_yfp_from_cfp = results %>%
   summarize(slope = ifelse(coef(summary(lm(yfp ~ cfp)))[2,4] < 0.05,
                            coef(lm(yfp ~ cfp))[2], 0)) %>%
   select(slope) %>% pull %>% unname 
+```
+
+    ## `summarise()` has grouped output by 'well'. You can override using the
+    ## `.groups` argument.
+    ## Adding missing grouping variables: `well`
+
+``` r
 S_od_from_yfp = results %>% 
   filter(species == "S") %>%
   filter(cycle >= get_start_growth_time(cycle, od) & cycle <= get_max_growth_time(cycle, od)) %>%
   summarize(slope = coef(lm(od ~ yfp))[2]) %>% 
   select(slope) %>%  pull %>% unname 
+```
+
+    ## `summarise()` has grouped output by 'well'. You can override using the
+    ## `.groups` argument.
+    ## Adding missing grouping variables: `well`
+
+``` r
 S_cfp_from_yfp = results %>% 
   filter(species == "S") %>%
   filter(cycle >= get_start_growth_time(cycle, od) & cycle <= get_max_growth_time(cycle, od)) %>%
@@ -757,38 +812,48 @@ S_cfp_from_yfp = results %>%
   summarize(slope = ifelse(coef(summary(lm(cfp ~ yfp)))[2,4] < 0.05,
                            coef(lm(cfp ~ yfp))[2], 0)) %>%
   select(slope) %>% pull %>% unname 
-
-
 ```
 
-We compile these into a matrix which we use to solve a system of equations, which 
-give us species-specific fluorescence values, which then can be multiplied to get
-species-specific OD values.
+    ## `summarise()` has grouped output by 'well'. You can override using the
+    ## `.groups` argument.
+    ## Adding missing grouping variables: `well`
 
-```{r compilematrix}
+We compile these into a matrix which we use to solve a system of
+equations, which give us species-specific fluorescence values, which
+then can be multiplied to get species-specific OD values.
 
+``` r
 fluorescence_matrix = matrix(c(1, S_cfp_from_yfp, E_yfp_from_cfp, 1), nrow = 2, byrow = TRUE)
 print(fluorescence_matrix)
+```
 
+    ##           [,1]       [,2]
+    ## [1,] 1.0000000 0.04826296
+    ## [2,] 0.1027046 1.00000000
+
+``` r
 results = results %>% 
   rowwise() %>%
   mutate(E_cfp = solve(fluorescence_matrix, c(cfp, yfp))[1],
          S_yfp = solve(fluorescence_matrix, c(cfp, yfp))[2]) %>%
   mutate(E_od = E_cfp * E_od_from_cfp,
          S_od = S_yfp * S_od_from_yfp)
-
 ```
 
-Now we have OD data on each species in the coculture, using fluorescence, with bleedthrough corrected for.
+Now we have OD data on each species in the coculture, using
+fluorescence, with bleedthrough corrected for.
 
-```{r showdata}
-
+``` r
 results %>%
   filter(species == "ES") %>%
   pivot_longer(cols = c(od, E_od, S_od), names_to = "signal", values_to = "od") %>%
   ggplot(aes(x = cycle, y = od, color = signal))+
   geom_line()
-
 ```
 
-Obviously, this particular example didn't work that well--I'm time-strapped so didn't want to spend a lot of time finding a good, representative case, but in general in good cases the species-specific ODs should sum (ish) to the actual OD.
+![](bleedthrough_correction_files/figure-gfm/showdata-1.png)<!-- -->
+
+Obviously, this particular example didn’t work that well–I’m
+time-strapped so didn’t want to spend a lot of time finding a good,
+representative case, but in general in good cases the species-specific
+ODs should sum (ish) to the actual OD.
