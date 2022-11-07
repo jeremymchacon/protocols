@@ -3,6 +3,35 @@ Tecan exploration and growth curve fitting
 Chacon
 2022-11-07
 
+``` r
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+```
+
+    ## Warning in as.POSIXlt.POSIXct(Sys.time()): unable to identify current timezone 'E':
+    ## please set environment variable 'TZ'
+
+    ## ── Attaching packages ─────────────────────────────────────── tidyverse 1.3.2 ──
+    ## ✔ ggplot2 3.3.6      ✔ purrr   0.3.5 
+    ## ✔ tibble  3.1.8      ✔ dplyr   1.0.10
+    ## ✔ tidyr   1.2.1      ✔ stringr 1.4.1 
+    ## ✔ readr   2.1.3      ✔ forcats 0.5.2 
+    ## ── Conflicts ────────────────────────────────────────── tidyverse_conflicts() ──
+    ## ✖ dplyr::filter() masks stats::filter()
+    ## ✖ dplyr::lag()    masks stats::lag()
+
+``` r
+rm(list = ls())
+source("./tecan_funcs.r")
+```
+
+    ## 
+    ## Attaching package: 'zoo'
+    ## 
+    ## The following objects are masked from 'package:base':
+    ## 
+    ##     as.Date, as.Date.numeric
+
 ## Tecan data
 
 This shows how to use some helper functions to read in TECAN data and
@@ -176,10 +205,6 @@ logistic_gr = fit_all_logistic(OD, measure = "OD", tries = 50)
 ``` r
 baranyi_gr = fit_all_baranyi(OD, measure = "OD", tries = 50)
 ```
-
-    ## Warning in log(1 + (exp(r * At) - 1)/exp(logymax - logy0)): NaNs produced
-
-    ## Warning in log(1 + (exp(r * At) - 1)/exp(logymax - logy0)): NaNs produced
 
     ## `summarise()` has grouped output by 'well'. You can override using the
     ## `.groups` argument.

@@ -3,6 +3,34 @@ different growth models
 Chacon
 2022-11-07
 
+``` r
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+```
+
+    ## Warning in as.POSIXlt.POSIXct(Sys.time()): unable to identify current timezone 'E':
+    ## please set environment variable 'TZ'
+
+    ## ── Attaching packages ─────────────────────────────────────── tidyverse 1.3.2 ──
+    ## ✔ ggplot2 3.3.6      ✔ purrr   0.3.5 
+    ## ✔ tibble  3.1.8      ✔ dplyr   1.0.10
+    ## ✔ tidyr   1.2.1      ✔ stringr 1.4.1 
+    ## ✔ readr   2.1.3      ✔ forcats 0.5.2 
+    ## ── Conflicts ────────────────────────────────────────── tidyverse_conflicts() ──
+    ## ✖ dplyr::filter() masks stats::filter()
+    ## ✖ dplyr::lag()    masks stats::lag()
+
+``` r
+source("./growthcurve_functions.r")
+```
+
+    ## 
+    ## Attaching package: 'zoo'
+    ## 
+    ## The following objects are masked from 'package:base':
+    ## 
+    ##     as.Date, as.Date.numeric
+
 This document shows the 3 different growth models which can be fit to
 experimental data, e.g. from the TECAN.
 
@@ -57,7 +85,7 @@ print(parms)
 ```
 
     ##            r           y0          lag          end 
-    ## 5.141354e-01 1.295398e-05 2.090111e+01 3.984785e+01
+    ## 5.128061e-01 1.257831e-05 2.082009e+01 3.987335e+01
 
 ## Logistic growth.
 
@@ -88,7 +116,7 @@ print(parms)
 ```
 
     ##            r          lag            K           y0 
-    ## 4.999931e-01 3.800023e+01 2.199997e-01 1.204442e-05
+    ## 5.000565e-01 3.800034e+01 2.200032e-01 1.638455e-05
 
 ## Baranyi model
 
@@ -116,7 +144,7 @@ print(parms)
 ```
 
     ##            r          lag         ymax           y0 
-    ## 4.999149e-01 1.092769e+01 2.199983e-01 1.770645e-07
+    ## 5.000536e-01 1.966913e+01 2.199945e-01 1.395697e-05
 
 ## The log-linear model is quite different from the logistic and Baranyi models
 
