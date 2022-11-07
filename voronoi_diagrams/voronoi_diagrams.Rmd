@@ -1,0 +1,142 @@
+---
+title: "voronoi diagrams"
+author: "Chacon"
+date: "2022-11-07"
+output: rmarkdown::github_document
+---
+
+To construct regular Voronoi diagrams and find their areas, we use 'spatstat' and one of its dependencies 'deldir'. 
+
+
+
+```{r setup}
+rm(list = ls())
+library(tidyverse)
+library(spatstat)
+```
+
+First lets just do it in a rectangle called "arena". We identify the width and height of the rectangle in an "owin." Then we simulate some points. Then we make a "point process" object (ppp). These have their own plotting function.
+
+```{r rectnagle}
+width = 8 # cm
+height = 4
+arena = owin(xrange = c(0, width), yrange = c(0, height))
+
+n = 30
+x = runif(n, 0, width)
+y = runif(n, 0, height)
+
+expt = ppp(x, y, window = arena)
+plot(expt)
+```
+
+We can quickly get and plot the raw Voronoi areas.
+
+```{r rectvoronoi}
+
+plot(dirichlet(expt))
+points(x,y)
+
+voronoi = dirichletAreas(expt)
+data.frame(x = x, y = y, voronoi = voronoi) %>%
+  head()
+```
+
+Presumably petri dishes will sometimes be used, and so you'll want to use a round arena rather than a rectangular one. For this, we can use the "disc" function from spatstat. You can also make ellipses, estimate an area from points, use a polygon, click to draw a polygon, etc. with various spatstat functions. Try ?owin or ?spatstat.geom
+
+```{r roundvoronoi}
+radius = 3
+n = 30
+arena = disc(radius = radius, centre = c(radius, radius))
+x = c()
+y = c()
+# probably a better way to simulate points, but this works
+while(length(x) < n){
+  x_temp = runif(1, 0, radius*2)
+  y_temp = runif(1, 0, radius*2)
+  dist2_from_center = (x_temp-radius)^2 + (y_temp - radius)^2
+  if (dist2_from_center <= (radius^2)){
+    x = c(x, x_temp)
+    y = c(y, y_temp)
+  }
+}
+expt = ppp(x, y, arena)
+plot(expt)
+plot(dirichlet(expt))
+points(x,y)
+
+data.frame(x, y, voronoi = dirichletAreas(expt)) %>%
+  head()
+```
+
+Note that there is now a package 'ggvoronoi' which can be used to plot these prettily. 
+
+## Weighted Voronoi
+
+Sometimes you may wish to calculate a weighted Voronoi diagram. This is trickier, but can be done by creating raster images and calculating distances from the x,y to each location, then multiplying these distances by the weights. I've made some helper functions for this in analysis_helper_functions.r.
+
+For these functions to work, we need to start by making a mask, which is basically a matrix of TRUE or FALSE that define the experimental area. An important consideration is that this is thinking in "pixels," so everything must be an integer. If you are working with continuous values, consider multiplying them by something and rounding so you end up with an experimental area of roughly 200x200. Much smaller than this and the diagrams get too noisy; much larger and it takes a LONG time to process.
+
+Here we'll go right ahead and make a round mask. A rectangular one is also easy to make.
+
+```{r makemask}
+source("./analysis_helper_functions.r")
+
+radius = 50
+center = radius + 1
+# first we'll simulate x,y points. Since these must be integers, we'll use sample
+n = 10
+x = c()
+y = c()
+# probably a better way to simulate points, but this works
+while(length(x) < n){
+  x_temp = sample(1:(radius*2), 1)
+  y_temp = sample(1:(radius*2), 1)
+  dist2_from_center = (x_temp-center)^2 + (y_temp - center)^2
+  if (dist2_from_center <= (radius^2)){
+    x = c(x, x_temp)
+    y = c(y, y_temp)
+  }
+}
+
+mask = make_round_mask(radius)
+image(mask)
+expt_start = mask * 1
+for (i in 1:length(x)){
+  expt_start[x[i], y[i]] = 0
+}
+image(expt_start)
+
+```
+
+We can calculate a distance array from our x,y points and the mask.
+
+```{r calcdist}
+dist_array = get_squared_distance_array(x, y, mask)
+#this is what one looks like:
+image(dist_array[3,,])
+```
+
+Let's make fake weights. The first 10 will get no weight (weight of 1), and the second 10 will get a weight of 2.
+
+The higher-weighted stuff should "pull more points," so the actual weighting divides distances by the weigth.
+
+
+```{r doweights}
+weights = rep(c(1,2), each = n/2)
+weighted_dists = apply_weight(dist_array, weights)
+closest_map = get_closest_map(weighted_dists, mask)
+image(closest_map)
+closest_map_with_points = closest_map
+for (i in 1:length(x)){
+  closest_map_with_points[x[i], y[i]] = -1
+}
+image(closest_map_with_points)
+```
+
+Finally you can get areas simply, and use them later:
+
+```{r areas}
+data.frame(x, y, weighted_voronoi = get_areas(closest_map, n)) %>%
+  head()
+```
