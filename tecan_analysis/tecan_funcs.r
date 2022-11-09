@@ -66,21 +66,21 @@ plot_plate_growthrates = function(growth_rates,
   return(fig)
 }
 
-fit_all_loglinear = function(OD, measure = "OD", tries = 5){
+fit_all_loglinear = function(OD, measure = "OD", groups = c("well"), tries = 5){
   measure = ensym(measure)
   OD %>%
-    group_by(well) %>%
+    group_by_at(groups) %>%
     summarize(model_fit = fit_loglinear(hour, !!measure, tries),
-              fit_variable = c("r", "y0", "start", "end")) %>%
+              fit_variable = c("r", "y0", "lag", "end")) %>%
     ungroup() %>%
     pivot_wider(names_from = fit_variable, values_from = model_fit)
 }
 
 
-fit_all_logistic = function(OD, measure = "OD", tries = 5){
+fit_all_logistic = function(OD, measure = "OD", groups = c("well"), tries = 5){
   measure = ensym(measure)
   OD %>%
-    group_by(well) %>%
+    group_by_at(groups) %>%
     summarize(model_fit = fit_logistic(hour, !!measure, tries),
               fit_variable = c("r", "lag", "K", "y0")) %>%
     ungroup() %>%
@@ -88,10 +88,10 @@ fit_all_logistic = function(OD, measure = "OD", tries = 5){
 }
 
 
-fit_all_baranyi = function(OD, measure = "OD", tries = 5){
+fit_all_baranyi = function(OD, measure = "OD", groups = c("well"), tries = 5){
   measure = ensym(measure)
   OD %>%
-    group_by(well) %>%
+    group_by_at(groups) %>%
     summarize(model_fit = fit_baranyi(hour, !!measure, tries),
               fit_variable = c("r", "lag", "ymax", "y0")) %>%
     ungroup() %>%
@@ -99,12 +99,27 @@ fit_all_baranyi = function(OD, measure = "OD", tries = 5){
 }
 
 
-fit_all_loglinear_lm = function(OD, measure = "OD", surround = 5){
+fit_all_loglinear_lm = function(OD, measure = "OD", groups = c("well"),
+                                surround = 5){
   measure = ensym(measure)
   OD %>%
-    group_by(well) %>%
+    group_by_at(groups) %>%
     summarize(model_fit = fit_loglinear_lm(hour, !!measure, surround),
               fit_variable = c("r")) %>%
     ungroup() %>%
     pivot_wider(names_from = fit_variable, values_from = model_fit)
+}
+
+get_yields = function(OD, measure = "OD", groups = c("well"), smooth = 1){
+  # returns a dataframe grouped by the stated groups, that has the max of the
+  # measure as "yield." Optionally, if smooth > 1, it computes a moving average of window
+  # "smooth" first
+  measure = ensym(measure)
+  OD %>%
+    group_by(well) %>%
+    arrange(cycle) %>%
+    mutate(measure = rollmean(!!measure, smooth, fill = NA)) %>%
+    group_by_at(groups) %>%
+    summarize(yield = max(measure, na.rm = TRUE)) %>%
+    ungroup()
 }

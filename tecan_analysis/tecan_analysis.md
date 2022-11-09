@@ -181,6 +181,11 @@ has as many rows as \# of wells \* \# of parameters in model. I.e. it
 loses the temporal data. They can be merged together after the fact,
 however.
 
+Importantly, other metadata (e.g. treatment columns) can be retained, by
+specifying the groups in which growth rate should be measured. This
+should always include well (because you want to have one growth rate per
+well), but here, could also include media.
+
 There is also a function “plot_plate_growthrates” which plots the growth
 rates in the shape of the plate. I use it for one set of growth rates
 below.
@@ -189,33 +194,42 @@ You’ll see that some wells are missing data–that is because
 curve-fitting failed on those wells.
 
 ``` r
-loglin_gr = fit_all_loglinear(OD, measure = "OD", tries = 50)
+loglin_gr = fit_all_loglinear(OD, measure = "OD", groups = c("well", "media"), tries = 50)
+```
+
+    ## `summarise()` has grouped output by 'well', 'media'. You can override using the
+    ## `.groups` argument.
+
+``` r
+logistic_gr = fit_all_logistic(OD, measure = "OD", groups = c("well", "media"), tries = 50)
+```
+
+    ## `summarise()` has grouped output by 'well', 'media'. You can override using the
+    ## `.groups` argument.
+
+``` r
+baranyi_gr = fit_all_baranyi(OD, measure = "OD", groups = c("well", "media"), tries = 50)
+```
+
+    ## Warning in log(1 + (exp(r * At) - 1)/exp(logymax - logy0)): NaNs produced
+
+    ## Warning in log(1 + (exp(r * At) - 1)/exp(logymax - logy0)): NaNs produced
+
+    ## `summarise()` has grouped output by 'well', 'media'. You can override using the
+    ## `.groups` argument.
+
+``` r
+loglin_lm_gr = fit_all_loglinear_lm(OD, measure = "OD", groups = c("well", "media"), surround = 5)
 ```
 
     ## `summarise()` has grouped output by 'well'. You can override using the
     ## `.groups` argument.
 
 ``` r
-logistic_gr = fit_all_logistic(OD, measure = "OD", tries = 50)
-```
-
-    ## `summarise()` has grouped output by 'well'. You can override using the
-    ## `.groups` argument.
-
-``` r
-baranyi_gr = fit_all_baranyi(OD, measure = "OD", tries = 50)
-```
-
-    ## `summarise()` has grouped output by 'well'. You can override using the
-    ## `.groups` argument.
-
-``` r
-loglin_lm_gr = fit_all_loglinear_lm(OD, measure = "OD", surround = 5)
-
 plot_plate_growthrates(loglin_gr, response = "r")
 ```
 
-    ## Warning: Removed 45 rows containing missing values (position_stack).
+    ## Warning: Removed 44 rows containing missing values (position_stack).
 
 ![](tecan_analysis_files/figure-gfm/fitgrowthmodels-1.png)<!-- -->
 
@@ -260,13 +274,14 @@ loglin_gr %>%
     ## Joining, by = "well"
     ## `geom_smooth()` using formula 'y ~ x'
 
-    ## Warning: Removed 45 rows containing non-finite values (stat_smooth).
-    ## Removed 45 rows containing missing values (geom_point).
+    ## Warning: Removed 44 rows containing non-finite values (stat_smooth).
+
+    ## Warning: Removed 44 rows containing missing values (geom_point).
 
 ![](tecan_analysis_files/figure-gfm/modelcorr-2.png)<!-- -->
 
-Two things you could do to help with fitting are smoothing the data.
-Another common thing is to cap the data at the max value reached.
+Two things you could do to help with fitting are smoothing the data, or
+cap the data at the max value reached.
 
 ``` r
 # smooth data with a median smoothing, window size 11
@@ -306,23 +321,23 @@ Note that making the OD_pred depends on using the growth model, which
 means we need to specify differently-named parameters for each curve.
 
 ``` r
-loglin_gr = fit_all_loglinear(OD, measure = "OD_capped", tries = 50)
+loglin_gr = fit_all_loglinear(OD, measure = "OD_capped", groups = c("well", "media"), tries = 50)
 ```
 
-    ## `summarise()` has grouped output by 'well'. You can override using the
+    ## `summarise()` has grouped output by 'well', 'media'. You can override using the
     ## `.groups` argument.
 
 ``` r
-logistic_gr = fit_all_logistic(OD, measure = "OD_capped", tries = 50)
+logistic_gr = fit_all_logistic(OD, measure = "OD_capped", groups = c("well", "media"), tries = 50)
 ```
 
-    ## `summarise()` has grouped output by 'well'. You can override using the
+    ## `summarise()` has grouped output by 'well', 'media'. You can override using the
     ## `.groups` argument.
 
 ``` r
 left_join(OD, loglin_gr) %>%
   rowwise() %>%
-  mutate(OD_pred = log_linear(hour, r, y0,start, end)) %>%
+  mutate(OD_pred = log_linear(hour, r, y0,lag, end)) %>%
   ungroup %>%
   plot_plate(measure = "OD_pred")+ # here is plot plate
   geom_line(aes(y = OD), size = 2, color = "black")+
@@ -330,7 +345,7 @@ left_join(OD, loglin_gr) %>%
   scale_y_log10()
 ```
 
-    ## Joining, by = "well"
+    ## Joining, by = c("well", "media")
 
     ## Warning: Transformation introduced infinite values in continuous y-axis
     ## Transformation introduced infinite values in continuous y-axis
@@ -348,10 +363,77 @@ left_join(OD, logistic_gr) %>%
   scale_y_log10()
 ```
 
-    ## Joining, by = "well"
+    ## Joining, by = c("well", "media")
 
     ## Warning: Removed 5954 row(s) containing missing values (geom_path).
 
     ## Warning: Removed 5954 row(s) containing missing values (geom_path).
 
 ![](tecan_analysis_files/figure-gfm/redogrowthrates-2.png)<!-- -->
+
+## Max growth summary joined to growth rate summary
+
+Finally, I included a function to get yields. This should obviously be
+done on blank-subtrated data! It optionally smooths the data with a
+rolling mean smoothing first, to remove spikes. Set this to 1 (or just
+don’t set it) to not smooth first.
+
+You can include which grouping variables to group by, and then after the
+fact, it is straightforward to join this to a growth rate results.
+
+At the very end I have a commented line which saves one of the resulting
+dataframes.
+
+``` r
+results = get_yields(OD, measure = "OD", groups = c("well","media"), smooth = 5) %>%
+  left_join(loglin_gr)
+```
+
+    ## `summarise()` has grouped output by 'well'. You can override using the
+    ## `.groups` argument.
+    ## Joining, by = c("well", "media")
+
+``` r
+head(results %>% filter(media != "water"))
+```
+
+    ## # A tibble: 6 × 7
+    ##   well  media      yield     r      y0   lag   end
+    ##   <fct> <chr>      <dbl> <dbl>   <dbl> <dbl> <dbl>
+    ## 1 B2    succinate 0.0631 0.114 0.00253 13.5   41.0
+    ## 2 B3    succinate 0.0630 0.108 0.00251 13.5   42.7
+    ## 3 B4    succinate 0.0596 0.115 0.00250 15.4   42.3
+    ## 4 B5    succinate 0.0588 0.131 0.00251 17.8   41.2
+    ## 5 C7    glucose   0.116  0.128 0.00279  3.64  32.9
+    ## 6 C8    glucose   0.114  0.149 0.00252  7.15  32.8
+
+``` r
+plot_plate_growthrates(results, response = "yield", color = "media")
+```
+
+![](tecan_analysis_files/figure-gfm/maxgrowth-1.png)<!-- -->
+
+``` r
+results %>%
+  ggplot(aes(x = r, y = yield, color = media))+
+  geom_point()
+```
+
+    ## Warning: Removed 43 rows containing missing values (geom_point).
+
+![](tecan_analysis_files/figure-gfm/maxgrowth-2.png)<!-- -->
+
+``` r
+results %>%
+  ggplot(aes(x = lag, y = r, color = media))+
+  geom_point()
+```
+
+    ## Warning: Removed 43 rows containing missing values (geom_point).
+
+![](tecan_analysis_files/figure-gfm/maxgrowth-3.png)<!-- -->
+
+``` r
+# how to write to file:
+# write_csv(results, "growthrate_and_yield.csv")
+```

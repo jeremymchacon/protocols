@@ -97,18 +97,20 @@ Please note that non-linear curve fitting sometimes fails to converge. To remedy
 
 Here I show how to do all four functions. They return a data frame which has as many rows as # of wells * # of parameters in model. I.e. it loses the temporal data. They can be merged together after the fact, however.
 
+Importantly, other metadata (e.g. treatment columns) can be retained, by specifying the groups in which growth rate should be measured. This should always include well (because you want to have one growth rate per well), but here, could also include media. 
+
 There is also a function "plot_plate_growthrates" which plots the growth rates in the shape of the plate. I use it for one set of growth rates below.
 
 You'll see that some wells are missing data--that is because curve-fitting failed on those wells. 
 
 ```{r fitgrowthmodels}
-loglin_gr = fit_all_loglinear(OD, measure = "OD", tries = 50)
+loglin_gr = fit_all_loglinear(OD, measure = "OD", groups = c("well", "media"), tries = 50)
 
-logistic_gr = fit_all_logistic(OD, measure = "OD", tries = 50)
+logistic_gr = fit_all_logistic(OD, measure = "OD", groups = c("well", "media"), tries = 50)
 
-baranyi_gr = fit_all_baranyi(OD, measure = "OD", tries = 50)
+baranyi_gr = fit_all_baranyi(OD, measure = "OD", groups = c("well", "media"), tries = 50)
 
-loglin_lm_gr = fit_all_loglinear_lm(OD, measure = "OD", surround = 5)
+loglin_lm_gr = fit_all_loglinear_lm(OD, measure = "OD", groups = c("well", "media"), surround = 5)
 
 plot_plate_growthrates(loglin_gr, response = "r")
 
@@ -140,7 +142,7 @@ loglin_gr %>%
   stat_smooth(method = "lm")
 ```
 
-Two things you could do to help with fitting are smoothing the data. Another common thing is to cap the data at the max value reached.
+Two things you could do to help with fitting are smoothing the data, or cap the data at the max value reached.
 
 ```{r capdata}
 # smooth data with a median smoothing, window size 11
@@ -166,13 +168,13 @@ Note that making the OD_pred depends on using the growth model, which means we n
 
 ```{r redogrowthrates}
 
-loglin_gr = fit_all_loglinear(OD, measure = "OD_capped", tries = 50)
+loglin_gr = fit_all_loglinear(OD, measure = "OD_capped", groups = c("well", "media"), tries = 50)
 
-logistic_gr = fit_all_logistic(OD, measure = "OD_capped", tries = 50)
+logistic_gr = fit_all_logistic(OD, measure = "OD_capped", groups = c("well", "media"), tries = 50)
 
 left_join(OD, loglin_gr) %>%
   rowwise() %>%
-  mutate(OD_pred = log_linear(hour, r, y0,start, end)) %>%
+  mutate(OD_pred = log_linear(hour, r, y0,lag, end)) %>%
   ungroup %>%
   plot_plate(measure = "OD_pred")+ # here is plot plate
   geom_line(aes(y = OD), size = 2, color = "black")+
@@ -188,5 +190,34 @@ left_join(OD, logistic_gr) %>%
   geom_line(aes(y = OD), size = 2, color = "black")+
   geom_line(size = 1, color = "blue")+
   scale_y_log10()
+
+```
+
+## Max growth summary joined to growth rate summary
+
+Finally, I included a function to get yields. This should obviously be done on blank-subtrated data! It optionally smooths the data with a rolling mean smoothing first, to remove spikes. Set this to 1 (or just don't set it) to not smooth first. 
+
+You can include which grouping variables to group by, and then after the fact, it is straightforward to join this to a growth rate results. 
+
+At the very end I have a commented line which saves one of the resulting dataframes. 
+
+```{r maxgrowth}
+results = get_yields(OD, measure = "OD", groups = c("well","media"), smooth = 5) %>%
+  left_join(loglin_gr)
+
+head(results %>% filter(media != "water"))
+
+plot_plate_growthrates(results, response = "yield", color = "media")
+
+results %>%
+  ggplot(aes(x = r, y = yield, color = media))+
+  geom_point()
+
+results %>%
+  ggplot(aes(x = lag, y = r, color = media))+
+  geom_point()
+
+# how to write to file:
+# write_csv(results, "growthrate_and_yield.csv")
 
 ```

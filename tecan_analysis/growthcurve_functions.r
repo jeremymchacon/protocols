@@ -47,9 +47,9 @@ fit_loglinear = function(x, y, tries = 5){
   }
   r = coef(m1)[1]
   y0 = exp(coef(m1)[2])
-  start = coef(m1)[3]
+  lag = coef(m1)[3]
   end = coef(m1)[4]
-  return(c(r, y0, start, end))
+  return(c(r, y0, lag, end))
 }
 
 
